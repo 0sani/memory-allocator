@@ -24,6 +24,5 @@ typedef __darwin_size_t        size_t;
 void* malloc(size_t size);
 void free(void *ptr);
 void* calloc(size_t count, size_t size);
-void print_freep(void);
 
 #endif
