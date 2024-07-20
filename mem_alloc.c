@@ -18,12 +18,21 @@ typedef union header Header;
 static Header sentinel; // base
 static Header* blocks = NULL;
 
+#ifdef DEBUG
+static int sbrk_calls = 0;
+static int malloc_calls = 0;
+static int free_calls = 0;
+#endif
 
 #define NALLOC 1024 // tiniest amount of memory we're allowed to request from the OS
 
 
 static Header *more_mem_pls(unsigned nu)
 {
+    #ifdef DEBUG
+    sbrk_calls++;
+    #endif
+
     char *cp, *sbrk(int);
     Header *up;
 
@@ -45,6 +54,10 @@ static Header *more_mem_pls(unsigned nu)
 
 
 void* malloc(size_t size) {
+    #ifdef DEBUG
+    malloc_calls++;
+    #endif
+
 
     if (size <= 0) {
         printf("Invalid size");
@@ -64,7 +77,7 @@ void* malloc(size_t size) {
         blocks = &sentinel;
     }
 
-    for (p = blocks; ; p = p->s.ptr) {
+    for (p = blocks->s.ptr; ; p = p->s.ptr) {
         
         // if we've reached the start again
         if (p == &sentinel) {
@@ -87,6 +100,7 @@ void* malloc(size_t size) {
                 new->s.free = 1;
                 new->s.size = p->s.size - nunits;
                 p->s.ptr = new;
+                p->s.size = nunits;
             }
             p->s.free = 0;
             return (void *) (p + 1);
@@ -95,20 +109,34 @@ void* malloc(size_t size) {
 }
 
 void free(void* ptr) {
+    #ifdef DEBUG
+    free_calls++;
+    #endif
+
     Header* freed = ((Header *) ptr) - 1;
 
-    Header *p;
+    Header *p, *prev;
 
-    for (p = blocks; p->s.ptr != blocks; p = p->s.ptr) {
+    for (p = blocks->s.ptr, prev = blocks; p->s.ptr != blocks; p = p->s.ptr, prev = prev->s.ptr) {
 
         // found our block
         if (p == freed) {
             p->s.free = 1;
+
+            // defragmentation
+            // merge with next
+            if (p->s.ptr->s.free == 1) {
+                p->s.size += p->s.ptr->s.size;
+                p->s.ptr = p->s.ptr->s.ptr;
+            }
+            // merge with previous
+            if (prev->s.free == 1) {
+                prev->s.size += p->s.size;
+                prev->s.ptr = p->s.ptr;
+            }
+
             return;
         }
-
-        // TODO: defragmentation
-
     }
 }
 
@@ -120,3 +148,25 @@ void* calloc(size_t count, size_t size)
     memset(ptr, 0, count*size);
     return ptr;
 }
+
+#ifdef DEBUG
+unsigned get_num_blocks(void) {
+    if (blocks == NULL) {
+        return 0;
+    }
+    Header *p;
+    unsigned count = 0;
+    for (p = blocks->s.ptr; p != blocks; p = p->s.ptr) {
+        count++;
+    }
+    return count;
+}
+
+
+void heap_info(void) {
+    printf("Number of sbrk calls: %d\n", sbrk_calls);
+    printf("Number of malloc calls: %d\n", malloc_calls);
+    printf("Number of free calls: %d\n", free_calls);
+    printf("Number of blocks: %d\n", get_num_blocks());
+}
+#endif
