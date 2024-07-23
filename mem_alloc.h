@@ -1,5 +1,7 @@
 #ifndef MEM_ALLOC_H
 #define MEM_ALLOC_H
+#include <assert.h>
+
 
 // copying only the most necessary parts of stdlib
 #if defined(__SIZE_TYPE__)
@@ -27,8 +29,10 @@ void* calloc(size_t count, size_t size);
 
 #ifdef DEBUG
 void heap_info(void);
+void assert_circular_ll(void);
 #else
 static inline void heap_info(void) {}
+static inline void assert_circular_ll(void) {}
 #endif
 
 #endif

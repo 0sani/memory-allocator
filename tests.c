@@ -17,10 +17,7 @@ void random_alloc_free(void) {
         
 
         size_t size = rand() % MAX_ALLOC_SIZE + 1; // Allocate between 1 and MAX_ALLOC_SIZE bytes
-        if (run == 3 && i > 980) {
-            printf("%d size: %zu\n", i, size);
-            heap_info();
-        }
+
         pointers[i] = malloc(size);
         if (pointers[i] == NULL) {
             printf("Allocation failed at iteration %d\n", i);

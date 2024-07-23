@@ -27,6 +27,27 @@ static int free_calls = 0;
 #define NALLOC 1024 // tiniest amount of memory we're allowed to request from the OS
 
 
+// helper function for splitting memory blocks
+// ptr: node to be split
+// size: size of desired first block after split
+// Before: [one block             ]
+// After:  [size   |  total - size]
+// size includes the metadata
+void split_node(Header* ptr, unsigned size) {
+    assert(ptr->s.size > size); // checks that the output is still valid
+    
+    // create new node
+    Header *new_node = ptr + size;
+    new_node->s.free = 1;
+    new_node->s.ptr = ptr->s.ptr;
+    new_node->s.size = ptr->s.size - size;
+
+    ptr->s.ptr = new_node;
+    ptr->s.size = size;
+}
+
+
+
 static Header *more_mem_pls(unsigned nu)
 {
     #ifdef DEBUG
@@ -47,6 +68,11 @@ static Header *more_mem_pls(unsigned nu)
     }
 
     up = (Header *) cp;
+
+    #ifdef DEBUG
+    if ((unsigned long) up > (1L << 36))
+        printf("Suspicious pointer in sbrk block: %p\n", (void*) up);
+    #endif
     up->s.size = nu;
     up->s.free = 1;
     return up;
@@ -66,7 +92,7 @@ void* malloc(size_t size) {
 
     Header *p;
 
-    unsigned nunits = (size + sizeof(Header) - 1) / sizeof(Header) + 1;
+    unsigned nunits = (size + sizeof(Header)) / sizeof(Header) + 1;
 
     // if uninitialized
     if (blocks == NULL) {
@@ -78,11 +104,12 @@ void* malloc(size_t size) {
     }
 
     for (p = blocks->s.ptr; ; p = p->s.ptr) {
-        
+
         // if we've reached the start again
         if (p == &sentinel) {
             Header* up;
             if ((up = more_mem_pls(nunits)) == NULL)  {
+                printf("Failed to get more memory\n");
                 return NULL;
             }
 
@@ -93,14 +120,8 @@ void* malloc(size_t size) {
         
         // found something that fits
         if (p->s.size >= nunits && p->s.free) {
-
             if (p->s.size > nunits) {
-                Header* new = p + nunits;
-                new->s.ptr = p->s.ptr;
-                new->s.free = 1;
-                new->s.size = p->s.size - nunits;
-                p->s.ptr = new;
-                p->s.size = nunits;
+                split_node(p, nunits);
             }
             p->s.free = 0;
             return (void *) (p + 1);
@@ -124,17 +145,17 @@ void free(void* ptr) {
             p->s.free = 1;
 
             // defragmentation
+            // need to check that the pointers are contiguous
             // merge with next
-            if (p->s.ptr->s.free == 1) {
+            if (p->s.ptr->s.free == 1 && p->s.ptr == p + p->s.size) {
                 p->s.size += p->s.ptr->s.size;
-                p->s.ptr = p->s.ptr->s.ptr;
+                p->s.ptr = p->s.ptr->s.ptr; 
             }
             // merge with previous
-            if (prev->s.free == 1) {
+            if (prev->s.free == 1 && p == prev + prev->s.size) {
                 prev->s.size += p->s.size;
                 prev->s.ptr = p->s.ptr;
             }
-
             return;
         }
     }
@@ -162,8 +183,8 @@ unsigned get_num_blocks(void) {
     return count;
 }
 
-
 void heap_info(void) {
+    printf("Location of base: %p\n", (void*) blocks);
     printf("Number of sbrk calls: %d\n", sbrk_calls);
     printf("Number of malloc calls: %d\n", malloc_calls);
     printf("Number of free calls: %d\n", free_calls);
